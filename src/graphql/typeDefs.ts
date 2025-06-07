@@ -1,5 +1,3 @@
-import { gpl } from "apollo-server-express";
-
 export const typeDefs = `#graphql
 type User {
     id: ID!
@@ -118,6 +116,23 @@ type Query {
 type Mutation {
     register(input: RegisterInput!): AuthPayload!
     login(input: LoginInput!): AuthPayload!
+
+    createProduct(input: ProductInput!): Product!
+    updateProduct(id: ID!, input: ProductInput!): Product!
+    deleteProduct(id: ID!): Boolean!
+
+    createOrder(input: OrderInput!): Order!
+    updateOrderStatus(id: ID!, status: OrderStatus!): Order!
+
+    createPayment(orderId: ID!): PaymentPayload!
+    executePayment(paymentId: String!, payerId: String!, orderId: ID!): Order!
+
+    sendMessage(input: MessageInput!): Message!
+}
+
+type Subscription {
+    messageAdded(userId: ID!): Message!
+    orderStatusUpdated(orderId: ID!): Order!
 }
 
 `;
