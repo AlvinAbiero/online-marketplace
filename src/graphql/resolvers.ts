@@ -1,9 +1,5 @@
-import {
-  AuthenticationError,
-  ForbiddenError,
-  UserInputError,
-} from "apollo-server-express";
-// import { withFilter, PubSub } from "graphql-subscriptions";
+import { GraphQLError } from "graphql";
+import { withFilter, PubSub } from "graphql-subscriptions";
 import User from "../models/User";
 import Product from "../models/Product";
 import Order from "../models/Order";
@@ -23,16 +19,22 @@ import {
 
 const requireAuth = (user: any) => {
   if (!user) {
-    throw new AuthenticationError(
-      "You must be logged in to perform this action"
-    );
+    throw new GraphQLError("You must be logged in to perform this action", {
+      extensions: {
+        code: "UNAUTHENTICATED",
+      },
+    });
   }
 };
 
 const requireSeller = (user: any) => {
   requireAuth(user);
   if (user.role !== "seller" && user.role !== "admin") {
-    throw new ForbiddenError("You must be a seller to perform this action");
+    throw new GraphQLError("You must be a seller to perform this action", {
+      extensions: {
+        code: "FORBIDDEN",
+      },
+    });
   }
 };
 
@@ -70,7 +72,11 @@ export const resolvers = {
         "firstName lastName email"
       );
       if (!product || !product.isActive) {
-        throw new UserInputError("Product not found or inactive");
+        throw new GraphQLError("Product not found", {
+          extensions: {
+            code: "BAD_USER_INPUT",
+          },
+        });
       }
       return product;
     },
@@ -102,14 +108,22 @@ export const resolvers = {
         .populate("product");
 
       if (!order) {
-        throw new UserInputError("Order not found");
+        throw new GraphQLError("Order not found", {
+          extensions: {
+            code: "BAD_USER_INPUT",
+          },
+        });
       }
 
       if (
         order.buyer._id.toString() !== user!._id &&
         order.seller._id.toString() !== user!._id
       ) {
-        throw new ForbiddenError("Access denied");
+        throw new GraphQLError("Access denied", {
+          extensions: {
+            code: "FORBIDDEN",
+          },
+        });
       }
 
       return order;
@@ -133,16 +147,58 @@ export const resolvers = {
     register: async (_: any, { input }: any) => {
       const { error } = userRegistrationSchema.validate(input);
       if (error) {
-        throw new UserInputError(error.details[0].message);
+        throw new GraphQLError(error.details[0].message, {
+          extensions: {
+            code: "BAD_USER_INPUT",
+          },
+        });
       }
 
       const existingUser = await User.findOne({ email: input.email });
       if (existingUser) {
-        throw new UserInputError("User with this email already exists");
+        throw new GraphQLError("User with this email already exists", {
+          extensions: {
+            code: "BAD_USER_INPUT",
+          },
+        });
       }
 
       const user = new User(input);
       await user.save();
+
+      const token = generateToken(user._id);
+      return { token, user };
+    },
+
+    login: async (_: any, { input }: any) => {
+      const { error } = userLoginSchema.validate(input);
+      if (error) {
+        throw new GraphQLError(error.details[0].message, {
+          extensions: {
+            code: "BAD_USER_INPUT",
+          },
+        });
+      }
+
+      const user = await User.findOne({ email: input.email });
+      if (!user) {
+        throw new GraphQLError("Invalid credentials", {
+          extensions: {
+            code: "UNAUTHENTICATED",
+          },
+        });
+      }
+
+      const isValidPassword = await (user as any).comparePassword(
+        input.password
+      );
+      if (!isValidPassword) {
+        throw new GraphQLError("Invalid credentials", {
+          extensions: {
+            code: "UNAUTHENTICATED",
+          },
+        });
+      }
 
       const token = generateToken(user._id);
       return { token, user };
